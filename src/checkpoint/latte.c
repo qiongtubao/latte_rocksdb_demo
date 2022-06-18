@@ -11,7 +11,7 @@
 #include <sys/time.h>
 
 #define VALUE_SIZE ( 1024 * 1024)
-
+#define WNOHANG 0x00000001
 rocksdb_options_t* initDbOpts() {
     rocksdb_options_t* options = rocksdb_options_create();
     rocksdb_options_set_create_if_missing(options, 1); 
@@ -61,10 +61,16 @@ rocksdb_writeoptions_t* initWriteOpts() {
     return wopts;
 }
 
-
+rocksdb_flushoptions_t* initFlushOpts() {
+    rocksdb_flushoptions_t *fopts;
+    fopts = rocksdb_flushoptions_create();
+    rocksdb_flushoptions_set_wait(fopts, 1);
+    return fopts;
+}
 rocksdb_t* openDb(rocksdb_options_t* options, char* dir) {
     char* err = NULL;
     rocksdb_t* db = rocksdb_open(options, dir, &err);
+    printf("rocksdb open %s\n", dir);
     if (err != NULL) {
         printf("open db %s fail\n", dir);
         return NULL;
@@ -95,65 +101,80 @@ void create_random_value(char* value, int size) {
     }
 }
 
-void* write_data(void* p) {
-    rocksdb_t* db = (rocksdb_t*)p;
-    rocksdb_writeoptions_t* wopts;
-    wopts = initWriteOpts();
 
-    long long dbsize = (1024L * 1024 * 1024 * 10)/ VALUE_SIZE;
-    printf("write data size: %lld\n", dbsize);
-    char key[1000];
-    char* value = malloc(VALUE_SIZE + 1);
-    value[VALUE_SIZE] = '\0';
-    create_random_value(value, VALUE_SIZE);
-    for(long long i = 0; i < dbsize; i++) {
-        int key_size = encode(&key, "data", i);    
-        if (0 == writeDb(db, wopts, key, key_size, value, VALUE_SIZE)) {
-            free(value);
-            return "write data fail";
-        }
+char* readDb(rocksdb_t* db, rocksdb_readoptions_t* ropts, char* key, int key_size, int* value_size) {
+    char* err = NULL;
+    char* value = rocksdb_get(db, ropts, key, key_size, value_size, &err);
+    if (err != NULL) {
+        printf("read key:%s fail\n", key);
+        return NULL;
+    }
+    return value;
+}
+
+int flushDB(rocksdb_t* db, rocksdb_flushoptions_t* fopts) {
+    char* err = NULL;
+    rocksdb_flush(db, fopts, err);
+    if(err != NULL) {
+        printf("flush fail\n");
+        return 0;
+    }
+    return 1;
+}
+
+void* write_data(void* p) {
+    rocksdb_t * db = (rocksdb_t*)p;
+    rocksdb_writeoptions_t* wopts;
+    rocksdb_readoptions_t* ropts;
+    rocksdb_flushoptions_t* fopts;
+    wopts = initWriteOpts();
+    ropts = initReadOpts();
+
+    if(writeDb(db, wopts, "key", 3, "value", 5) == 0) {
+        return "write key fail";
+    };
+    fopts = initFlushOpts();
+    // flushDB(db, fopts);
+    int len = 0;
+    char* value = readDb(db, ropts, "key",3, &len);
+    if (value == NULL) {
+        return "read key fail";
+    }
+    if(strncmp(value, "value", len) == 0) {
+        printf("set key value ok!\n");
+    } else {
+        printf("set key fail value:%s value_size:%d\n", value, len);
     }
     free(value);
     return NULL;
-    
 }
 
 
 
 
 void* write_data2(void* p) {
-    rocksdb_t* db = (rocksdb_t*)p;
+    rocksdb_t * db = (rocksdb_t*)p;
     rocksdb_writeoptions_t* wopts;
+    rocksdb_readoptions_t* ropts;
+    rocksdb_flushoptions_t* fopts;
     wopts = initWriteOpts();
+    ropts = initReadOpts();
 
+    if(writeDb(db, wopts, "key", 3, "value1", 6) == 0) {
+        return "write key fail";
+    };
+    fopts = initFlushOpts();
+    flushDB(db, fopts);
+    int len = 0;
+    char* value = readDb(db, ropts, "key",3, &len);
+    if (value == NULL) {
+        return "read key fail";
+    }
     
-    char key[1000];
-
-    
-    long long index = 0;
-    long long qps = 1000;
-    //1s 1000qps  => 100ms
-    long long once_use_time = 100;
- 
-    char* value = malloc(VALUE_SIZE + 1);
-    value[VALUE_SIZE] = '\0';
-    long long dbsize = (1024L * 1024L * 1024L * 10L)/ VALUE_SIZE;
-    while (1) {
-        long long start_time = ustime();
-        int key_size = encode(&key, "data",  rand() % dbsize);
-        create_random_value(value, VALUE_SIZE);
-        if (0 == writeDb(db, wopts, key, key_size, value, VALUE_SIZE)) {
-            free(value);
-            return "write db2 fail";
-        }
-        // printf("rewrite key %s, value %d%d\n", key, value[0], value[1]);
-        index++;
-        long long end_time = ustime();
-        long long usetime = end_time - start_time;
-        if (usetime < once_use_time) {
-            // printf("usleep %lld\n", once_use_time - usetime);
-            usleep(once_use_time - usetime);
-        }
+    if(strncmp(value, "value1", len) == 0) {
+        printf("set key value1 ok!\n");
+    } else {
+        printf("set key fail value:%s  len: %d\n", value, len);
     }
     free(value);
     return NULL;
@@ -196,6 +217,31 @@ rocksdb_checkpoint_t* create_checkpoint(rocksdb_t* db, char* dir, uint64_t log_s
     return checkpoint;
 }
 
+// void* read_checkpoint(void* p) {
+    
+// }
+
+
+int read_checkpoint(char* checkpoint_dir) {
+    rocksdb_options_t* db_opts;
+    rocksdb_readoptions_t* ropts;
+    db_opts = initDbOpts();
+    rocksdb_t* db = openDb(db_opts, checkpoint_dir);
+    if (db == NULL) {
+        printf("open checkpoint db fail\n");
+        return 0;
+    }
+    ropts = initReadOpts();
+    int len = 0;
+    char* value = readDb(db, ropts, "key", 3, &len);
+    if (value == NULL) {
+        printf("read checkpoint key fail\n");
+        return 0;
+    }
+    printf("read checkpoint value: %s, value_size: %d\n", value, len);
+    free(value);
+    return 1;
+} 
 int main() {
     rocksdb_options_t* db_opts;
     rocksdb_cache_t* block_cache;
@@ -224,9 +270,39 @@ int main() {
     // }
 
     start_time = ustime();
+    
     rocksdb_checkpoint_t* checkpoint =  create_checkpoint(db, "data.rocks/1", 0);
     end_time = ustime();
     printf("checkpoint use time :%lld\n", end_time - start_time);
 
+    int childpid = 0;
+    if((childpid = fork()) == 0) {
+        /* child */
+        sleep(10);
+        read_checkpoint("data.rocks/1");
+    } else {
+        if (execThreadTask(write_data2, db, NULL) != 1) {
+            printf(" write data fail2\n");
+            return -1;
+        }
+        int pid;
+        int statloc = 0;
+        while (1) {
+            if ((pid = waitpid(-1, &statloc, WNOHANG)) != 0) {
+            if ( pid == childpid) {
+                    //Child over
+                    printf("fork over\n");
+                    // rocksdb_checkpoint_object_destroy(checkpoint);
+                    // rocksdb_destroy_db(db_opts, dir2, &err);
+                    // if(err != NULL) {
+                    //     printf("rocksdb_destroy_db fail: %s\n", strerror(err));
+                    //     return -1;
+                    // }
+                    break;
+                }
+                sleep(1);
+            }
+        }
+    }
     return 0;
 }

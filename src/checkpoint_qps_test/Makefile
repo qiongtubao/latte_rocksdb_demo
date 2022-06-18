@@ -44,5 +44,6 @@ build:latte
 	@echo "build ok"
 
 clean:
-	@rm -rf latte.o latte
+	@rm -rf *.o *.d
+	@rm -rf latte
 	@rm -rf data.rocks/*
