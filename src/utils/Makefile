@@ -16,35 +16,15 @@ FINAL_CFLAGS+=-I../../deps/rocksdb/include
 LATTE_CC=$(CC) $(FINAL_CFLAGS)
 FINAL_LDFLAGS=$(LDFLAGS) $(LATTE_LDFLAGS) $(DEBUG) $(OPT)
 LATTE_LD=$(LINK)$(CC) $(FINAL_LDFLAGS)
-FINAL_LIBS=../../deps/rocksdb/librocksdb.a -lm  -lstdc++ -pthread  -lz 
-# linux -lrt  -lsnappy
+FINAL_LIBS=../../deps/rocksdb/librocksdb.a -lm -lrt -lstdc++ -pthread -lsnappy -lz 
+
 %.o: %.c
 	$(LATTE_CC) -O0 -MMD -o $@ -c $<
 
-../utils/%.o:
-	cd ../utils && $(MAKE) $@.o
-
-##### diff
-OBJECT=latte.o ../utils/rocksdb_utils.o ../utils/latte_utils.o
-latte: $(OBJECT)
-	$(LATTE_LD) -o $@ $(OBJECT) $(FINAL_LIBS) 
 
 ####
-leaks:latte
-	export MallocStackLogging=1
-	leaks --atExit -- ./latte
 
-leaks-exclude:latte
-	export MallocStackLogging=1
-	export MallocScribble=1  
-	export MallocStackLoggingNoCompact=1
-	leaks --atExit -- ./latte  > memleak.log
-	export MallocScribble=0  
-	export MallocStackLogging=0 
-	export MallocStackLoggingNoCompact=0
 
-build:latte 
-	@echo "build ok"
 
 clean:
 	@rm -rf *.o *.d
