@@ -227,6 +227,8 @@ int main() {
     rocksdb_checkpoint_t* checkpoint =  create_checkpoint(db, "data.rocks/1", 0);
     end_time = ustime();
     printf("checkpoint use time :%lld\n", end_time - start_time);
-
+    start_time = ustime();
+    rocksdb_t* db1 = openDb(db_opts, "data.rocks/1");
+    end_time = ustime();
     return 0;
 }
