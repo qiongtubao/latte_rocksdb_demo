@@ -64,7 +64,7 @@ rocksdb_writeoptions_t* initWriteOpts() {
 
 rocksdb_t* openDb(rocksdb_options_t* options, char* dir) {
     char* err = NULL;
-    rocksdb_t* db = rocksdb_open(options, dir, &err);
+    rocksdb_t* db = rocksdb_open_with_ttl(options, dir, 60 * 60, &err);
     if (err != NULL) {
         printf("open db %s fail\n", dir);
         return NULL;

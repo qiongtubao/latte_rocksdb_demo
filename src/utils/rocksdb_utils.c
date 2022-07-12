@@ -10,7 +10,9 @@ rocksdb_options_t* initDbOpts() {
     rocksdb_options_set_stats_dump_period_sec(options, 60);
     rocksdb_options_set_max_write_buffer_number(options, 6);
     rocksdb_options_set_max_bytes_for_level_base(options, 512*1024*1024);
-    
+
+    // rocksdb_options_set_disable_auto_compactions(options, 1);
+
     // rocksdb_options_set_max_open_files(db_opts, 10);
     // rocksdb_options_set_paranoid_checks(options, 1);
 
@@ -56,13 +58,15 @@ rocksdb_flushoptions_t* initFlushOpts() {
 rocksdb_t* openDb(rocksdb_options_t* options, char* dir) {
     char* err = NULL;
     rocksdb_t* db = rocksdb_open(options, dir, &err);
-    printf("rocksdb open %s\n", dir);
     if (err != NULL) {
         printf("open db %s fail\n", dir);
         return NULL;
     }
+    printf("rocksdb open %s\n", dir);
     return db;
 }
+
+
 
 char* readDb(rocksdb_t* db, rocksdb_readoptions_t* ropts, char* key, int key_size, int* value_size) {
     char* err = NULL;
@@ -95,6 +99,8 @@ int writeDb(rocksdb_t* db, rocksdb_writeoptions_t* wopts, char* key, int key_siz
     return 1;
 }
 
+
+
 rocksdb_checkpoint_t* createCheckpoint(rocksdb_t* db, char* dir, uint64_t log_size_for_flush) {
     char* err = NULL;
     rocksdb_checkpoint_t* checkpoint = rocksdb_checkpoint_object_create(db, &err);
@@ -104,4 +110,47 @@ rocksdb_checkpoint_t* createCheckpoint(rocksdb_t* db, char* dir, uint64_t log_si
     }
     rocksdb_checkpoint_create(checkpoint, dir, log_size_for_flush, &err);
     return checkpoint;
+}
+
+latte_rocksdb_cf* createLatteRocksdbCf(size_t len) {
+    latte_rocksdb_cf* cf = malloc(sizeof(latte_rocksdb_cf));
+    cf->db = NULL;
+    if (len != 0) {
+        cf->handles = malloc(sizeof(rocksdb_column_family_handle_t*));
+    } else {
+        cf->handles = NULL;
+    }
+    cf->len = len;
+    return cf;
+}
+
+void releaseRocksdbCf(latte_rocksdb_cf* cf) {
+    if (cf->len > 0) {
+        free(cf->handles);
+    }
+    free(cf);
+}
+latte_rocksdb_cf* openDbByColumnFamily(rocksdb_options_t* options, char* dir) {
+    char* err = NULL;
+    // rocksdb_column_family_handle_t* handles[2];
+    latte_rocksdb_cf* cfs = createLatteRocksdbCf(1);
+    const char* default_cf_name = "default";
+    rocksdb_t* db = rocksdb_open_column_families(options, dir, 1, &default_cf_name, &options, cfs->handles, &err);
+    if (err != NULL) {
+        printf("open db %s fail\n", dir);
+        return NULL;
+    }
+    printf("rocksdb open %s\n", dir);
+    cfs->db = db;
+    return cfs;
+}
+
+int writeDbCf(latte_rocksdb_cf* cfs, rocksdb_writeoptions_t* wopts, char* key, int key_size, char* value, int value_size) {
+    char *err = NULL;
+    rocksdb_put_cf(cfs->db, wopts, cfs->handles[0], key, key_size, value, value_size, &err);
+    if (err != NULL) {
+        printf("write db key:%s, value:%s, error: %s\n",key, value, err);
+        return 0;
+    }
+    return 1;
 }

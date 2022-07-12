@@ -16,7 +16,9 @@ FINAL_CFLAGS+=-I../../deps/rocksdb/include
 LATTE_CC=$(CC) $(FINAL_CFLAGS)
 FINAL_LDFLAGS=$(LDFLAGS) $(LATTE_LDFLAGS) $(DEBUG) $(OPT)
 LATTE_LD=$(LINK)$(CC) $(FINAL_LDFLAGS)
-FINAL_LIBS=../../deps/rocksdb/librocksdb.a -lm  -lstdc++ -pthread  -lz -lbz2 -lsnappy
+FINAL_LIBS=../../deps/rocksdb/librocksdb.a -lm  -lstdc++ -pthread  -lz -lbz2 
+
+# -lsnappy
 
 
 # linux -lrt  -lsnappy
@@ -55,3 +57,4 @@ clean:
 	@rm -rf *.o *.d
 	@rm -rf latte
 	@rm -rf data.rocks/*
+	@cd ../utils && $(MAKE) clean
